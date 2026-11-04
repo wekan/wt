@@ -47,17 +47,24 @@ jobs:
           - { platform: linux-s390x,   runner: ubuntu-latest,     docker: linux/s390x,   base: "debian:trixie" }
           - { platform: linux-ppc64le, runner: ubuntu-latest,     docker: linux/ppc64le }
           - { platform: linux-riscv64, runner: ubuntu-latest,     docker: linux/riscv64, base: "debian:trixie" }
-          - { platform: linux-armv7,   runner: ubuntu-24.04-arm,  docker: linux/arm/v7 }
+          # 32-bit: WiredTiger needs a 64-bit CPU, so there is nothing to build - a stub tarball (build/stub.sh)
+          - { platform: linux-armv7,   runner: ubuntu-latest,     stub: true }
     steps:
       - uses: actions/checkout@v7
 
       - name: Set up QEMU for the other CPU architectures
-        if: matrix.platform != 'linux-amd64' && matrix.platform != 'linux-arm64'
+        if: matrix.platform != 'linux-amd64' && matrix.platform != 'linux-arm64' && !matrix.stub
         uses: docker/setup-qemu-action@v3
 
       - uses: docker/setup-buildx-action@v3
+        if: ${{ !matrix.stub }}
+
+      - name: Stub tarball (no readers can exist on this platform)
+        if: ${{ matrix.stub }}
+        run: bash build/stub.sh out
 
       - name: Build every reader that builds on this platform
+        if: ${{ !matrix.stub }}
         run: |
           docker buildx build --platform "${{ matrix.docker }}" --build-arg BASE="${{ matrix.base || 'debian:bookworm' }}" \
             -f Dockerfile.release --target dist \

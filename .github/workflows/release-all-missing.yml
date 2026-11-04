@@ -41,7 +41,7 @@ jobs:
             {"platform":"linux-s390x","runner":"ubuntu-latest","docker":"linux/s390x","base":"debian:trixie"},
             {"platform":"linux-ppc64le","runner":"ubuntu-latest","docker":"linux/ppc64le"},
             {"platform":"linux-riscv64","runner":"ubuntu-latest","docker":"linux/riscv64","base":"debian:trixie"},
-            {"platform":"linux-armv7","runner":"ubuntu-24.04-arm","docker":"linux/arm/v7"}]'
+            {"platform":"linux-armv7","runner":"ubuntu-latest","stub":true}]'
           matrix="$(echo "$all" | jq -c --arg assets "$assets" '
             ($assets | split("\n")) as $have
             | [ .[] | . as $e | select( (($have | index("wt-" + $e.platform + ".tar.gz")) and ($have | index("wt-" + $e.platform + ".tar.gz.sha256sum"))) | not ) ]')"
@@ -62,10 +62,15 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: Set up QEMU for the other CPU architectures
-        if: matrix.platform != 'linux-amd64' && matrix.platform != 'linux-arm64'
+        if: matrix.platform != 'linux-amd64' && matrix.platform != 'linux-arm64' && !matrix.stub
         uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
+        if: ${{ !matrix.stub }}
+      - name: Stub tarball (no readers can exist on this platform)
+        if: ${{ matrix.stub }}
+        run: bash build/stub.sh out
       - name: Build every reader that builds on this platform
+        if: ${{ !matrix.stub }}
         run: |
           docker buildx build --platform "${{ matrix.docker }}" --build-arg BASE="${{ matrix.base || 'debian:bookworm' }}" -f Dockerfile.release --target dist --output type=local,dest=out .
           test -x out/11.3/wt-mongo-dump || test -x out/3.1/wt-mongo-dump || { echo "no reader built"; exit 1; }

@@ -152,7 +152,13 @@ export function dump(dbpath, outdir, { tmp = process.env.TMPDIR || os.tmpdir(), 
   return { ok: false, info, log: r.log };
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+// Real paths, not resolved ones: run through a symlink (/var -> /private/var on a Mac, or a `wt` link in
+// /usr/local/bin) the two names differ and the command line silently did nothing.
+const isMain = () => {
+  try { return fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url)); }
+  catch { return false; }
+};
+if (process.argv[1] && isMain()) {
   const [cmd, ...args] = process.argv.slice(2);
   if (cmd === 'detect' && args[0]) console.log(JSON.stringify(detect(args[0]), null, 2));
   else if (cmd === 'dump' && args.length >= 2) {
