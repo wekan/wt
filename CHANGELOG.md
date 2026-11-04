@@ -1,40 +1,11 @@
 # Changelog
 
-# v1.0 2026-11-04 wt release
-
-**In short:** The release builds that failed in v1.0 are fixed: **s390x** and **riscv64** build on Debian
-trixie, a failing reader build now says why instead of failing silently, and the test step no longer
-dies when a **mongod** image cannot start on the runner.
-
-This release fixes the following bugs:
-
-<details>
-<summary><a href="https://github.com/wekan/wt/commit/7321395">The v1.0 release builds for s390x, riscv64 and armv7 and its test step</a>. Thanks to xet7.</summary>
-
-The first release run failed in three ways:
-
-- `linux-s390x` and `linux-riscv64`: `debian:bookworm` has no image for either ("no match for
-  platform in manifest"). `Dockerfile.release` takes `BASE`, and the workflows pass `debian:trixie`
-  for those two. The bookworm and trixie builds were both run: the 11.3 and 3.1 readers build, and
-  2.5 is left out on arm64.
-- `linux-armv7`: a cmake failure went unnoticed. Each reader was built in `( set -e; ... ) || fallback`,
-  where bash ignores errexit, so the steps after the failed one ran against a header that was never
-  made, and the log showed only "wiredtiger.h: No such file". Each build is now its own script run by
-  `bash -e` (`build/w11.sh`, `w31.sh`, `w25.sh`), and `build/try.sh` prints the tail of the build log
-  when a reader is left out, so the next log says why.
-- `linux-amd64` and `linux-arm64`: the test step died when the `mongo:8.0` container exited.
-  `make-data.sh` now shows that container's log, and `tests/ci-roundtrip.sh` skips a version whose
-  mongod would not start (with the log) instead of failing, and also tests 7.0.
-
-</details>
-
-Thanks to above GitHub users for their contributions and translators for their translations.
-
-# v1.0 2026-11-04 wt release
+# Upcoming wt release
 
 **In short:** The first release of **wt**, which reads the raw data files of a MongoDB 3.0 - 8.x
 database without mongod, knows which MongoDB wrote them, replays the journal or salvages damaged
-files on a copy when it has to, and turns them into FerretDB (SQLite) data.
+files on a copy when it has to, and turns them into FerretDB (SQLite) data. Built for **Linux
+amd64, arm64, s390x, ppc64le and riscv64**; 32-bit ARM gets a stub, because WiredTiger needs 64 bits.
 
 This release adds the following new features:
 
@@ -53,6 +24,34 @@ Read through WeKan's importer into FerretDB (SQLite) from the official mongo ima
 GridFS bytes all identical. An mongod killed with SIGKILL was recovered completely; a file with
 256 KB of random bytes overwritten lost the documents in the damaged pages (9,751 of 20,000
 survived) and nothing else.
+
+</details>
+
+and fixes the following bugs:
+
+<details>
+<summary><a href="https://github.com/wekan/wt/commit/b88b40f">The release builds: 32-bit ARM, RISC-V, s390x, and wt.mjs through a symlink</a>. Thanks to xet7.</summary>
+
+What the first two release runs showed:
+
+- `linux-s390x` and `linux-riscv64`: `debian:bookworm` has no image for either. `Dockerfile.release`
+  takes `BASE`, and the workflows pass `debian:trixie` for those two.
+- A failing reader build went unnoticed: each was built in `( set -e; ... ) || fallback`, where bash
+  ignores errexit. Each build is now its own script run by `bash -e` (`build/w11.sh`, `w31.sh`,
+  `w25.sh`), and `build/try.sh` prints the tail of the build log when a reader is left out.
+- `linux-armv7`: WiredTiger requires a 64-bit build, and MongoDB never ran WiredTiger on 32-bit
+  systems, so there is nothing to read or build. The platform publishes a stub tarball (`wt.mjs` and
+  an explanation, `build/stub.sh`) instead of failing, and `wt dump` says there is no reader.
+- `linux-riscv64`: WiredTiger 3.1 has no memory barriers for the architecture; `build/w31.sh` adds
+  RISC-V's fence instructions. Not run yet: if it is wrong the reader is left out with the log.
+- `wt.mjs` printed nothing and exited 0 when run through a symlink (`/var` on a Mac, or a `wt` link
+  in `/usr/local/bin`), because it compared a resolved path with a real one.
+- The test step died when the `mongo:8.0` container exited: that image does not start on kernels
+  6.19 and newer (SERVER-121912). `make-data.sh` shows the container's log, and
+  `tests/ci-roundtrip.sh` skips a version whose mongod would not start, and also tests 7.0.
+
+`tests/stub-platform.sh` pins the stub, the symlink fix and that the workflows build nothing for
+armv7.
 
 </details>
 
