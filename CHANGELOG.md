@@ -1,11 +1,12 @@
 # Changelog
 
-# v0.01 2026-11-04 wt release
+# Upcoming wt release
 
 **In short:** The first release of **wt** (v0.01), which reads the raw data files of a MongoDB 3.0 - 8.x
 database without mongod, knows which MongoDB wrote them, replays the journal or salvages damaged
-files on a copy when it has to, and turns them into FerretDB (SQLite) data. Built for **Linux
-amd64, arm64, s390x, ppc64le and riscv64**; 32-bit ARM gets a stub, because WiredTiger needs 64 bits.
+files on a copy when it has to, and turns them into FerretDB (SQLite) data. Built for the 23
+platforms of wekan/node-patches: **Linux, macOS, Windows, FreeBSD, OpenBSD and NetBSD** on 64-bit CPUs, and a stub
+where WiredTiger cannot run (32-bit, Android, LoongArch).
 
 This release adds the following new features:
 
@@ -24,6 +25,30 @@ Read through WeKan's importer into FerretDB (SQLite) from the official mongo ima
 GridFS bytes all identical. An mongod killed with SIGKILL was recovered completely; a file with
 256 KB of random bytes overwritten lost the documents in the damaged pages (9,751 of 20,000
 survived) and nothing else.
+
+</details>
+
+<details>
+<summary><a href="https://github.com/wekan/wt/commit/0b95e4b">wt is built for macOS, Windows, FreeBSD, OpenBSD and NetBSD, and for every platform of node-patches</a>. Thanks to xet7.</summary>
+
+`platforms.json` is the one list: the 23 platforms of wekan/node-patches, under its names (`x64`, `arm64`,
+`mac-arm64`, `win64`, `freebsd-x64`, ...), so WeKan fetches `wt-<platform>` and `node-<platform>` with one
+vocabulary. `build.yml`, a reusable workflow, builds each platform and attaches its tarball to the release as
+soon as it is built; `release-all.yml` and `release-all-missing.yml` only decide which platforms to ask for.
+
+| Platforms | What the tarball holds |
+| --- | --- |
+| `x64`, `arm64`, `s390x`, `ppc64le`, `riscv64` | readers 11.3 and 3.1 (and 2.5 on `x64`), built in a container of that CPU |
+| `mac-arm64`, `mac-x64` | readers 11.3 and 3.1, built on macOS runners |
+| `freebsd-x64`, `openbsd-x64`, `openbsd-arm64`, `netbsd-x64` | readers 11.3 and 3.1, built in a VM |
+| `win64`, `win-arm64` | reader 11.3 (mongod 4.4 - 8.0), built with MSVC |
+| `i386`, `armv6`, `armhf`, `armv7`, `win32`, `android-*`, `loong64` | `wt.mjs` and an explanation: WiredTiger needs a 64-bit CPU, MongoDB never ran on Android, WiredTiger has no LoongArch port |
+
+macOS, Windows and the BSDs are `best_effort`: nobody had built WiredTiger there, so a failure there does not
+fail the run, its log says why, a summary job lists what the release lacks, and Release All Missing builds only
+that. `wt.mjs` runs a reader as `.exe` with its DLLs on `PATH` on Windows and with `DYLD_LIBRARY_PATH` on macOS,
+and a smoke step starts each reader on the runner that built it. None of the new platforms has been built yet.
+`tests/platforms.sh` pins the list against node-patches' names, the modes, and which platforms are stubs.
 
 </details>
 
