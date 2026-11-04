@@ -1,0 +1,82 @@
+name: Release All Missing
+
+# The same build as release-all.yml over only what the release does NOT have: a platform counts as
+# present only when BOTH wt-<platform>.tar.gz and its .sha256sum are on the release, because a
+# tarball whose checksum upload failed is exactly the half-published state this repairs. A platform
+# that is missing and does not build stays missing - the log says so - and does not fail the run.
+#
+# Usage:  gh workflow run release-all-missing.yml -f version=v1.0
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release tag to complete, e.g. v1.0'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wt-release-${{ inputs.version }}
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      any: ${{ steps.plan.outputs.any }}
+    steps:
+      - id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          assets="$(gh release view "$VERSION" --repo "$GITHUB_REPOSITORY" --json assets -q '.assets[].name' 2>/dev/null || true)"
+          all='[
+            {"platform":"linux-amd64","runner":"ubuntu-latest","docker":"linux/amd64"},
+            {"platform":"linux-arm64","runner":"ubuntu-24.04-arm","docker":"linux/arm64"},
+            {"platform":"linux-s390x","runner":"ubuntu-latest","docker":"linux/s390x"},
+            {"platform":"linux-ppc64le","runner":"ubuntu-latest","docker":"linux/ppc64le"},
+            {"platform":"linux-riscv64","runner":"ubuntu-latest","docker":"linux/riscv64"},
+            {"platform":"linux-armv7","runner":"ubuntu-24.04-arm","docker":"linux/arm/v7"}]'
+          matrix="$(echo "$all" | jq -c --arg assets "$assets" '
+            ($assets | split("\n")) as $have
+            | [ .[] | . as $e | select( (($have | index("wt-" + $e.platform + ".tar.gz")) and ($have | index("wt-" + $e.platform + ".tar.gz.sha256sum"))) | not ) ]')"
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+          echo "any=$([ "$matrix" = '[]' ] && echo false || echo true)" >> "$GITHUB_OUTPUT"
+          echo "missing: $matrix"
+
+  build:
+    needs: plan
+    if: needs.plan.outputs.any == 'true'
+    name: wt for ${{ matrix.platform }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 240
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Set up QEMU for the other CPU architectures
+        if: matrix.platform != 'linux-amd64' && matrix.platform != 'linux-arm64'
+        uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - name: Build every reader that builds on this platform
+        run: |
+          docker buildx build --platform "${{ matrix.docker }}" -f Dockerfile.release --target dist --output type=local,dest=out .
+          test -x out/11.3/wt-mongo-dump || test -x out/3.1/wt-mongo-dump || { echo "no reader built"; exit 1; }
+      - name: Pack and attach this platform the moment it is built
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          mkdir -p dist
+          tar -C out -czf "dist/wt-${{ matrix.platform }}.tar.gz" .
+          (cd dist && sha256sum "wt-${{ matrix.platform }}.tar.gz" > "wt-${{ matrix.platform }}.tar.gz.sha256sum")
+          gh release view "$VERSION" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 \
+            || gh release create "$VERSION" --repo "$GITHUB_REPOSITORY" --title "wt $VERSION" --notes "wt $VERSION"
+          gh release upload "$VERSION" --repo "$GITHUB_REPOSITORY" --clobber dist/*
