@@ -6,13 +6,22 @@
 # compatibility version it reports, and that the source is byte for byte unchanged.
 set -eu
 TAR="$(readlink -f "$1")"; shift
-VERSIONS="${*:-4.4 6.0 8.0}"
+VERSIONS="${*:-4.4 6.0 7.0 8.0}"
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
 W="$HERE/run/roundtrip"; rm -rf "$W"; mkdir -p "$W/wt" "$W/out"
 tar -C "$W/wt" -xzf "$TAR"
 fail=0
 for V in $VERSIONS; do
-  [ -d "$HERE/data/$V" ] || bash "$HERE/make-data.sh" "$V" >/dev/null
+  if [ ! -d "$HERE/data/$V" ]; then
+    # a mongod image that cannot start on this runner is the runner's problem, not wt's: SKIP it,
+    # with the mongod's own log, so the others are still tested
+    if ! bash "$HERE/make-data.sh" "$V" > "$W/make-$V.log" 2>&1; then
+      if [ "$(tail -c 2000 "$W/make-$V.log" | grep -c 'is not running')" -gt 0 ]; then
+        echo "SKIP $V: the mongod container would not start here:"; tail -15 "$W/make-$V.log" | sed 's/^/    /'; continue
+      fi
+      echo "FAIL $V: making the data failed:"; tail -15 "$W/make-$V.log" | sed 's/^/    /'; fail=1; continue
+    fi
+  fi
   before=$(cd "$HERE/data/$V" && find . -type f -not -name WiredTiger.lock -print0 | sort -z | xargs -0 shasum | shasum)
   log=$(docker run --rm -v "$W/wt:/opt/wt:ro" -v "$HERE/data:/data" -v "$W/out:/out" -e WT_HOME=/opt/wt -e TMPDIR=/tmp \
     node:22-bookworm bash -c 'apt-get update -qq >/dev/null 2>&1; apt-get install -y -qq libsnappy1v5 libzstd1 zlib1g >/dev/null 2>&1; node /opt/wt/wt.mjs dump /data/'"$V"' /out/'"$V" 2>&1)

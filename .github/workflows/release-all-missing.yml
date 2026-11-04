@@ -38,9 +38,9 @@ jobs:
           all='[
             {"platform":"linux-amd64","runner":"ubuntu-latest","docker":"linux/amd64"},
             {"platform":"linux-arm64","runner":"ubuntu-24.04-arm","docker":"linux/arm64"},
-            {"platform":"linux-s390x","runner":"ubuntu-latest","docker":"linux/s390x"},
+            {"platform":"linux-s390x","runner":"ubuntu-latest","docker":"linux/s390x","base":"debian:trixie"},
             {"platform":"linux-ppc64le","runner":"ubuntu-latest","docker":"linux/ppc64le"},
-            {"platform":"linux-riscv64","runner":"ubuntu-latest","docker":"linux/riscv64"},
+            {"platform":"linux-riscv64","runner":"ubuntu-latest","docker":"linux/riscv64","base":"debian:trixie"},
             {"platform":"linux-armv7","runner":"ubuntu-24.04-arm","docker":"linux/arm/v7"}]'
           matrix="$(echo "$all" | jq -c --arg assets "$assets" '
             ($assets | split("\n")) as $have
@@ -67,7 +67,7 @@ jobs:
       - uses: docker/setup-buildx-action@v3
       - name: Build every reader that builds on this platform
         run: |
-          docker buildx build --platform "${{ matrix.docker }}" -f Dockerfile.release --target dist --output type=local,dest=out .
+          docker buildx build --platform "${{ matrix.docker }}" --build-arg BASE="${{ matrix.base || 'debian:bookworm' }}" -f Dockerfile.release --target dist --output type=local,dest=out .
           test -x out/11.3/wt-mongo-dump || test -x out/3.1/wt-mongo-dump || { echo "no reader built"; exit 1; }
       - name: Pack and attach this platform the moment it is built
         env:

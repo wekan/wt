@@ -3,53 +3,34 @@
 #
 #   docker buildx build --platform linux/arm64 -f Dockerfile.release --target dist --output type=local,dest=out .
 #
+# BASE is debian:bookworm where it exists. Debian bookworm has NO s390x or riscv64 image
+# ("no match for platform in manifest"), trixie has both, so the workflows pass
+# --build-arg BASE=debian:trixie for those two.
+#
 # A WiredTiger that does not build on a platform is left out instead of failing the release
-# (mongodb-3.0's does not build on arm64: "No write barrier implementation for this
-# hardware"). wt.mjs then says that this platform has no reader for that MongoDB, which is
-# the truth, rather than the platform having no wt at all.
-FROM debian:bookworm AS base
+# (mongodb-3.0's does not build on arm64: "No write barrier implementation for this hardware"),
+# and the build output says why (build/try.sh). wt.mjs then says that this platform has no
+# reader for that MongoDB, which is the truth, rather than the platform having no wt at all.
+ARG BASE=debian:bookworm
+FROM ${BASE} AS base
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git ca-certificates build-essential cmake ninja-build autoconf automake libtool libtool-bin \
     python3 python3-dev swig libsnappy-dev zlib1g-dev libzstd-dev \
  && rm -rf /var/lib/apt/lists/*
 COPY wt-mongo-dump.c /src/wt-mongo-dump.c
-SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+COPY build/ /build/
 
-# WiredTiger 11.3 (mongod 4.4 - 8.0): cmake
 FROM base AS w11
 ARG WT11_BRANCH=mongodb-8.0
-RUN mkdir -p /out/11.3/lib && ( set -e; \
-    git clone --depth 1 -b ${WT11_BRANCH} https://github.com/wiredtiger/wiredtiger /wt; cd /wt; mkdir build; cd build; \
-    cmake -G Ninja -DENABLE_SNAPPY=1 -DENABLE_ZLIB=1 -DENABLE_ZSTD=1 -DCMAKE_BUILD_TYPE=Release \
-      -DCMAKE_C_FLAGS="-Wno-error" -DENABLE_STATIC=0 -DENABLE_PYTHON=0 .. > /cmake.log 2>&1; \
-    sed -i -E 's/ -Werror(=[a-z-]+)?//g' build.ninja; \
-    ninja wiredtiger_shared wiredtiger_snappy wiredtiger_zlib wiredtiger_zstd > /ninja.log 2>&1; \
-    cp -a libwiredtiger.so* /out/11.3/lib/; cp -L ext/compressors/*/libwiredtiger_*.so /out/11.3/lib/; \
-    gcc -O2 -Wall -Iinclude -o /out/11.3/wt-mongo-dump /src/wt-mongo-dump.c -L/out/11.3/lib -lwiredtiger -Wl,-rpath,'$ORIGIN/lib' \
-  ) || { echo "WiredTiger 11.3 does not build on $(uname -m): left out"; rm -rf /out/11.3; mkdir -p /out; }
+RUN bash /build/try.sh 11.3 /build/w11.sh ${WT11_BRANCH}
 
-# WiredTiger 3.1 (mongod 3.2 - 4.2): autotools
 FROM base AS w31
 ARG WT31_BRANCH=mongodb-4.0
-RUN mkdir -p /out/3.1/lib && ( set -e; \
-    git clone --depth 1 -b ${WT31_BRANCH} https://github.com/wiredtiger/wiredtiger /wt; cd /wt/build_posix; \
-    sh reconf > /reconf.log 2>&1; ../configure --enable-snappy --enable-zlib --disable-python CFLAGS="-O2 -Wno-error" > /configure.log 2>&1; \
-    make -j4 > /make.log 2>&1; \
-    cp -a .libs/libwiredtiger*.so* /out/3.1/lib/; cp -L ext/compressors/{snappy,zlib}/.libs/libwiredtiger_*.so /out/3.1/lib/; \
-    gcc -O2 -Wall -I. -o /out/3.1/wt-mongo-dump /src/wt-mongo-dump.c -L/out/3.1/lib -lwiredtiger -Wl,-rpath,'$ORIGIN/lib' \
-  ) || { echo "WiredTiger 3.1 does not build on $(uname -m): left out"; rm -rf /out/3.1; mkdir -p /out; }
+RUN bash /build/try.sh 3.1 /build/w31.sh ${WT31_BRANCH}
 
-# WiredTiger 2.5 (mongod 3.0): autotools, x86_64 only in practice
 FROM base AS w25
 ARG WT25_BRANCH=mongodb-3.0
-RUN mkdir -p /out/2.5/lib && ( set -e; \
-    git clone --depth 1 -b ${WT25_BRANCH} https://github.com/wiredtiger/wiredtiger /wt; cd /wt; \
-    sed -i 's/typedef WT_COMPILER_TYPE_ALIGN(WT_CACHE_LINE_ALIGNMENT) struct {/typedef struct {/' src/include/log.h; cd build_posix; \
-    sh reconf > /reconf.log 2>&1; ../configure --enable-snappy --enable-zlib --disable-python CFLAGS="-O2 -Wno-error" > /configure.log 2>&1; \
-    make -j4 libwiredtiger.la > /make.log 2>&1; make -j4 -C ext/compressors/snappy >> /make.log 2>&1; make -j4 -C ext/compressors/zlib >> /make.log 2>&1; \
-    cp -a .libs/libwiredtiger*.so* /out/2.5/lib/; cp -L ext/compressors/{snappy,zlib}/.libs/libwiredtiger_*.so /out/2.5/lib/; \
-    gcc -O2 -Wall -I. -o /out/2.5/wt-mongo-dump /src/wt-mongo-dump.c -L/out/2.5/lib -lwiredtiger -Wl,-rpath,'$ORIGIN/lib' \
-  ) || { echo "WiredTiger 2.5 does not build on $(uname -m): left out"; rm -rf /out/2.5; mkdir -p /out; }
+RUN bash /build/try.sh 2.5 /build/w25.sh ${WT25_BRANCH}
 
 FROM scratch AS dist
 COPY --from=w11 /out/ /
