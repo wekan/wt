@@ -1,6 +1,6 @@
 # Changelog
 
-# Upcoming wt release
+# v0.01 2026-11-04 wt release
 
 **In short:** The first release of **wt** (v0.01), which reads the raw data files of a MongoDB 3.0 - 8.x
 database without mongod, knows which MongoDB wrote them, replays the journal or salvages damaged
