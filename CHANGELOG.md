@@ -1,6 +1,6 @@
 # Changelog
 
-# Upcoming wt release
+# v1.0 2026-11-04 wt release
 
 **In short:** The release builds that failed in v1.0 are fixed: **s390x** and **riscv64** build on Debian
 trixie, a failing reader build now says why instead of failing silently, and the test step no longer
