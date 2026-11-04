@@ -2,7 +2,7 @@
 
 # Upcoming wt release
 
-**In short:** The first release of **wt**, which reads the raw data files of a MongoDB 3.0 - 8.x
+**In short:** The first release of **wt** (v0.01), which reads the raw data files of a MongoDB 3.0 - 8.x
 database without mongod, knows which MongoDB wrote them, replays the journal or salvages damaged
 files on a copy when it has to, and turns them into FerretDB (SQLite) data. Built for **Linux
 amd64, arm64, s390x, ppc64le and riscv64**; 32-bit ARM gets a stub, because WiredTiger needs 64 bits.
@@ -52,6 +52,18 @@ What the first two release runs showed:
 
 `tests/stub-platform.sh` pins the stub, the symlink fix and that the workflows build nothing for
 armv7.
+
+</details>
+
+and has the following release-tooling change:
+
+<details>
+<summary><a href="https://github.com/wekan/wt/commit/0c40918">Releases are numbered v0.01, v0.02, and so on</a>. Thanks to xet7.</summary>
+
+The first release is v0.01, the next v0.02, and v0.99 is followed by v1.00, as WeKan goes from 9.99 to
+10.00. The minor is always two digits: `releases/lib.sh` has the rule (`bump_version`, decimal so that
+08 and 09 are not refused as octal) and `valid_version` accepts only `v<major>.<two digits>`, so
+`v1.0`, `v0.1` and a bare `0.01` are refused. `tests/version-numbers.sh` pins the sequence.
 
 </details>
 
