@@ -1,0 +1,19 @@
+# Builds libwiredtiger (the storage engine inside every mongod 3.x-8.x) WITHOUT any
+# mongod server code, plus the WiredTiger `wt` utility. WT_BRANCH picks which
+# MongoDB-branch of WiredTiger is built (mongodb-8.0, mongodb-7.0, ... mongodb-3.2).
+FROM debian:bookworm
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git ca-certificates build-essential cmake ninja-build python3 python3-dev swig \
+    libsnappy-dev libzstd-dev zlib1g-dev \
+ && rm -rf /var/lib/apt/lists/*
+ARG WT_BRANCH=mongodb-8.0
+RUN git clone --depth 1 -b ${WT_BRANCH} https://github.com/wiredtiger/wiredtiger /wt-src
+WORKDIR /wt-src
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+RUN mkdir build && cd build \
+ && cmake -G Ninja -DENABLE_SNAPPY=1 -DENABLE_ZLIB=1 -DENABLE_ZSTD=1 \
+      -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_FLAGS="-Wno-error" -DCMAKE_CXX_FLAGS="-Wno-error" -DENABLE_STATIC=0 -DENABLE_PYTHON=0 .. > /cmake.log 2>&1 \
+    || (tail -40 /cmake.log; exit 1)
+# The pinned Debian GCC trips WiredTiger's own -Werror on harmless array-bounds notes.
+RUN cd build && sed -i -E 's/ -Werror(=[a-z-]+)?//g' build.ninja \
+ && ninja wiredtiger_shared wiredtiger_snappy wiredtiger_zlib wiredtiger_zstd wt 2>&1 | tail -3

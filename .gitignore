@@ -1,0 +1,10 @@
+data/
+out/
+run/
+dist-test/
+*.log
+ferretdb-darwin
+wt-mongo-dump-*
+reader-*.env
+state.json
+*.bak

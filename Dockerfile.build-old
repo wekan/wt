@@ -1,0 +1,23 @@
+# WiredTiger of mongod 3.0 - 4.0 (autotools build, no cmake). WT_BRANCH = mongodb-4.0,
+# mongodb-3.6, mongodb-3.4, mongodb-3.2 or mongodb-3.0. Builds libwiredtiger and the
+# snappy / zlib block compressors those mongods used.
+FROM debian:bookworm
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git ca-certificates build-essential autoconf automake libtool libtool-bin python3 swig \
+    libsnappy-dev zlib1g-dev libzstd-dev \
+ && rm -rf /var/lib/apt/lists/*
+ARG WT_BRANCH=mongodb-4.0
+RUN git clone --depth 1 -b ${WT_BRANCH} https://github.com/wiredtiger/wiredtiger /wt-src
+# mongodb-3.0's WT_LOGSLOT asks for cache-line alignment that a current GCC refuses
+# ("size of array element is not a multiple of its alignment"); the alignment is only
+# a performance hint, so it is dropped when present.
+RUN sed -i 's/typedef WT_COMPILER_TYPE_ALIGN(WT_CACHE_LINE_ALIGNMENT) struct {/typedef struct {/' /wt-src/src/include/log.h
+WORKDIR /wt-src/build_posix
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+RUN sh reconf > /reconf.log 2>&1 || (tail -20 /reconf.log; exit 1)
+RUN ../configure --enable-snappy --enable-zlib --disable-python CFLAGS="-O2 -Wno-error" > /configure.log 2>&1 || (tail -30 /configure.log; exit 1)
+# Only the library and the two compressors: the utilities and tests of the oldest
+# branches do not build with a current compiler, and nothing here needs them.
+RUN make -j4 libwiredtiger.la > /make.log 2>&1 || (grep -E " error|Error [0-9]|undefined" /make.log | head -12; exit 1)
+RUN make -j4 -C ext/compressors/snappy >> /make.log 2>&1 && make -j4 -C ext/compressors/zlib >> /make.log 2>&1 || (grep -m8 "error" /make.log; exit 1)
+RUN find /wt-src -name "libwiredtiger*.so*" -o -name "libwiredtiger_*.so" | head

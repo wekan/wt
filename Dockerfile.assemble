@@ -1,0 +1,18 @@
+# The wt tool as one image: node + the reader built against each WiredTiger. For testing the
+# detection / recovery / repair ladder (wt.mjs) on Linux.
+FROM wt-build:8.0 AS w11
+RUN set -e; mkdir -p /out/11.3/lib; cp -a /wt-src/build/libwiredtiger.so* /out/11.3/lib/; \
+    cp -L /wt-src/build/ext/compressors/*/libwiredtiger_*.so /out/11.3/lib/
+COPY wt-mongo-dump.c /src/
+RUN gcc -O2 -I/wt-src/build/include -o /out/11.3/wt-mongo-dump /src/wt-mongo-dump.c -L/out/11.3/lib -lwiredtiger -Wl,-rpath,'$ORIGIN/lib'
+FROM wt-build:4.0 AS w31
+RUN set -e; mkdir -p /out/3.1/lib; cp -a /wt-src/build_posix/.libs/libwiredtiger*.so* /out/3.1/lib/; \
+    cp -L /wt-src/build_posix/ext/compressors/*/.libs/libwiredtiger_*.so /out/3.1/lib/
+COPY wt-mongo-dump.c /src/
+RUN gcc -O2 -I/wt-src/build_posix -o /out/3.1/wt-mongo-dump /src/wt-mongo-dump.c -L/out/3.1/lib -lwiredtiger -Wl,-rpath,'$ORIGIN/lib'
+FROM node:22-bookworm
+RUN apt-get update && apt-get install -y --no-install-recommends libsnappy1v5 libzstd1 zlib1g && rm -rf /var/lib/apt/lists/*
+COPY --from=w11 /out/11.3 /opt/wt/11.3
+COPY --from=w31 /out/3.1 /opt/wt/3.1
+COPY wt.mjs /opt/wt/wt.mjs
+ENV WT_HOME=/opt/wt
