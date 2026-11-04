@@ -14,13 +14,13 @@ name: Release All
 # NOT built here: Windows and macOS. WiredTiger's autotools builds (3.1, 2.5) are Linux-only,
 # and the macOS / Windows story is a decision still to be made (see README.md).
 #
-# Usage:  gh workflow run release-all.yml -f version=1.0
+# Usage:  gh workflow run release-all.yml -f version=v0.01
 
 on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Release tag to create or update, e.g. 1.0'
+        description: 'Release tag to create or update, e.g. v0.01'
         required: true
         type: string
   push:

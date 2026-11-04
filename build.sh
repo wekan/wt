@@ -94,7 +94,7 @@ EOF
       4) act_test_all ;;
       5) printf 'mongod version (e.g. 6.0): '; read -r v; act_data "$v" ;;
       6) act_audit ;;
-      7) printf 'Release tag (e.g. v1.0; empty = the next one): '; read -r v; act_release "$v" ;;
+      7) printf 'Release tag (e.g. v0.01; empty = the next one): '; read -r v; act_release "$v" ;;
       8) bash "$ROOT/releases/release-all.sh" ;;
       9) bash "$ROOT/releases/release-all-missing.sh" ;;
       10) act_clean ;;

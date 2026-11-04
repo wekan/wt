@@ -12,18 +12,28 @@ repo_slug() {
   printf '%s' "${r:-$REPO_SLUG_DEFAULT}"
 }
 
-# a release tag is v<MAJOR>.<MINOR>
-valid_version() { [[ "$1" =~ ^v[0-9]+\.[0-9]+$ ]] || { err "version must look like v1.0 (got '$1')"; return 1; }; }
+# A release tag is v<MAJOR>.<MM>: the minor is always TWO digits. The first release is v0.01, the next
+# v0.02, and so on; v0.99 is followed by v1.00 (the way WeKan goes from 9.99 to 10.00).
+valid_version() { [[ "$1" =~ ^v[0-9]+\.[0-9]{2}$ ]] || { err "version must look like v0.01 (got '$1')"; return 1; }; }
 
-# The release after the newest one on GitHub (v1.0 when there is none), same step as the last.
+# bump_version [last]  - the version after `last`; v0.01 when there is none. Pure, so it is testable.
+# 10# makes the minor decimal: "08" and "09" are not octal numbers, and bash would refuse them.
+bump_version() {
+  local last="${1:-}" major minor
+  [ -n "$last" ] || { echo v0.01; return; }
+  major="${last#v}"; major="${major%%.*}"; minor="${last##*.}"
+  minor=$((10#$minor + 1)); major=$((10#$major))
+  if [ "$minor" -gt 99 ]; then major=$((major + 1)); minor=0; fi
+  printf 'v%d.%02d\n' "$major" "$minor"
+}
+
+# The release after the newest one on GitHub (v0.01 when there is none).
 next_version() {
-  local repo last major minor
+  local repo last
   repo="$(repo_slug)"
   last="$(gh release list -R "$repo" --limit 100 --json tagName -q '.[].tagName' 2>/dev/null \
-    | grep -E '^v[0-9]+\.[0-9]+$' | sort -V | tail -1 || true)"
-  [ -n "$last" ] || { echo v1.0; return; }
-  major="${last#v}"; major="${major%%.*}"; minor="${last##*.}"
-  echo "v${major}.$((minor + 1))"
+    | grep -E '^v[0-9]+\.[0-9]{2}$' | sort -V | tail -1 || true)"
+  bump_version "$last"
 }
 
 need_gh() {

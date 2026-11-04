@@ -5,13 +5,13 @@ name: Release All Missing
 # tarball whose checksum upload failed is exactly the half-published state this repairs. A platform
 # that is missing and does not build stays missing - the log says so - and does not fail the run.
 #
-# Usage:  gh workflow run release-all-missing.yml -f version=v1.0
+# Usage:  gh workflow run release-all-missing.yml -f version=v0.01
 
 on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Release tag to complete, e.g. v1.0'
+        description: 'Release tag to complete, e.g. v0.01'
         required: true
         type: string
 

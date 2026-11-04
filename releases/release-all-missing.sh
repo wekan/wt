@@ -8,7 +8,7 @@ root="$(cd "$(dirname "$0")/.." && pwd)"; cd "$root"
 need_gh
 version="${1:-}"
 if [ -z "$version" ]; then
-  version="$(gh release list -R "$(repo_slug)" --limit 100 --json tagName -q '.[].tagName' | grep -E '^v[0-9]+\.[0-9]+$' | sort -V | tail -1 || true)"
+  version="$(gh release list -R "$(repo_slug)" --limit 100 --json tagName -q '.[].tagName' | grep -E '^v[0-9]+\.[0-9]{2}$' | sort -V | tail -1 || true)"
 fi
 [ -n "$version" ] || { err "no release to complete: run releases/release-all.sh first"; exit 1; }
 valid_version "$version"
