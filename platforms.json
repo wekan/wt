@@ -1,0 +1,27 @@
+[
+  { "platform": "x64",           "mode": "docker",  "runner": "ubuntu-latest",    "docker": "linux/amd64" },
+  { "platform": "arm64",         "mode": "docker",  "runner": "ubuntu-24.04-arm", "docker": "linux/arm64" },
+  { "platform": "s390x",         "mode": "docker",  "runner": "ubuntu-latest",    "docker": "linux/s390x",   "base": "debian:trixie", "timeout": 300 },
+  { "platform": "ppc64le",       "mode": "docker",  "runner": "ubuntu-latest",    "docker": "linux/ppc64le", "timeout": 300 },
+  { "platform": "riscv64",       "mode": "docker",  "runner": "ubuntu-latest",    "docker": "linux/riscv64", "base": "debian:trixie", "timeout": 300 },
+
+  { "platform": "mac-arm64",     "mode": "mac",     "runner": "macos-15",         "best_effort": true },
+  { "platform": "mac-x64",       "mode": "mac",     "runner": "macos-15-intel",   "best_effort": true },
+  { "platform": "win64",         "mode": "windows", "runner": "windows-2022",     "arch": "x64",   "best_effort": true },
+  { "platform": "win-arm64",     "mode": "windows", "runner": "windows-11-arm",   "arch": "arm64", "best_effort": true },
+  { "platform": "freebsd-x64",   "mode": "freebsd", "runner": "ubuntu-24.04",     "best_effort": true, "timeout": 240 },
+  { "platform": "openbsd-x64",   "mode": "openbsd", "runner": "ubuntu-24.04",     "vm_arch": "x86_64",  "best_effort": true, "timeout": 300 },
+  { "platform": "openbsd-arm64", "mode": "openbsd", "runner": "ubuntu-24.04",     "vm_arch": "aarch64", "best_effort": true, "timeout": 330 },
+  { "platform": "netbsd-x64",    "mode": "netbsd",  "runner": "ubuntu-24.04",     "best_effort": true, "timeout": 300 },
+
+  { "platform": "i386",          "mode": "stub", "runner": "ubuntu-latest", "reason": "32-bit" },
+  { "platform": "armv6",         "mode": "stub", "runner": "ubuntu-latest", "reason": "32-bit" },
+  { "platform": "armhf",         "mode": "stub", "runner": "ubuntu-latest", "reason": "32-bit" },
+  { "platform": "armv7",         "mode": "stub", "runner": "ubuntu-latest", "reason": "32-bit" },
+  { "platform": "win32",         "mode": "stub", "runner": "ubuntu-latest", "reason": "32-bit" },
+  { "platform": "android-armv7", "mode": "stub", "runner": "ubuntu-latest", "reason": "32-bit" },
+  { "platform": "android-x86",   "mode": "stub", "runner": "ubuntu-latest", "reason": "32-bit" },
+  { "platform": "android-arm64", "mode": "stub", "runner": "ubuntu-latest", "reason": "android" },
+  { "platform": "android-x64",   "mode": "stub", "runner": "ubuntu-latest", "reason": "android" },
+  { "platform": "loong64",       "mode": "stub", "runner": "ubuntu-latest", "reason": "loong64" }
+]

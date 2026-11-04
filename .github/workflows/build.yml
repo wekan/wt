@@ -1,0 +1,203 @@
+name: Build
+
+# Builds wt for the platforms in platforms.json and attaches each tarball to the GitHub Release the moment
+# it is built. Called by release-all.yml (every platform) and release-all-missing.yml (only the ones the
+# release lacks) - the one place the build steps are written, so "build the missing ones" cannot drift
+# from "build them all".
+#
+# The platform names are node-patches' (x64, arm64, mac-arm64, win64, freebsd-x64, ...), so WeKan's
+# release workflows fetch wt-<platform> and node-<platform> with the same vocabulary. Modes:
+#   docker   Linux 64-bit, in a container of the target CPU (Dockerfile.release): WiredTiger 11.3, 3.1, 2.5
+#   mac      macOS, natively (build/native.sh): 11.3 and 3.1
+#   windows  MSVC (build/windows.sh): 11.3
+#   freebsd, openbsd, netbsd   in a VM (vmactions), natively (build/native.sh): 11.3 and 3.1
+#   stub     no reader can exist (32-bit, Android, LoongArch): wt.mjs and an explanation (build/stub.sh)
+# A platform marked best_effort does not fail the run when it fails: nobody has built WiredTiger there
+# before, and the log says why. The summary job lists what the release does not have.
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: 'Release tag, e.g. v0.01'
+        required: true
+        type: string
+      only:
+        description: 'Only these platforms, space or comma separated; empty = all'
+        required: false
+        default: ''
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  plan:
+    name: plan
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      any: ${{ steps.plan.outputs.any }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: plan
+        env:
+          ONLY: ${{ inputs.only }}
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          only="$(echo "$ONLY" | tr ',' ' ')"
+          # an unknown platform name is an error, not an empty run
+          for p in $only; do
+            jq -e --arg p "$p" 'map(.platform) | index($p)' platforms.json >/dev/null || { echo "::error::unknown platform '$p'"; exit 1; }
+          done
+          matrix="$(jq -c --arg only "$only" '($only | split(" ") | map(select(length > 0))) as $o | [ .[] | select(($o | length) == 0 or (.platform as $p | $o | index($p))) ]' platforms.json)"
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+          echo "any=$([ "$matrix" = '[]' ] && echo false || echo true)" >> "$GITHUB_OUTPUT"
+          echo "building: $(echo "$matrix" | jq -r 'map(.platform) | join(" ")')"
+          # the release has to exist before the first build finishes, so each can attach its own tarball
+          gh release view "$VERSION" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 \
+            || gh release create "$VERSION" --repo "$GITHUB_REPOSITORY" --title "wt $VERSION" \
+                 --notes "wt $VERSION: raw MongoDB 3.0 - 8.x data files to FerretDB (SQLite), without mongod."
+
+  build:
+    name: wt ${{ matrix.platform }}
+    needs: plan
+    if: needs.plan.outputs.any == 'true'
+    runs-on: ${{ matrix.runner }}
+    continue-on-error: ${{ matrix.best_effort == true }}
+    timeout-minutes: ${{ matrix.timeout || 240 }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v7
+
+      # ---- Linux, in a container of the target CPU --------------------------------------------
+      - name: Set up QEMU for the other CPU architectures
+        if: matrix.mode == 'docker' && matrix.platform != 'x64' && matrix.platform != 'arm64'
+        uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+        if: matrix.mode == 'docker'
+      - name: Build every reader that builds on this platform
+        if: matrix.mode == 'docker'
+        run: |
+          docker buildx build --platform "${{ matrix.docker }}" --build-arg BASE="${{ matrix.base || 'debian:bookworm' }}" \
+            -f Dockerfile.release --target dist --output type=local,dest=out .
+          ls -R out | head -40
+          # a tarball with no reader at all is a failed build, not a platform without one
+          test -x out/11.3/wt-mongo-dump || test -x out/3.1/wt-mongo-dump || { echo "no reader built"; exit 1; }
+
+      # ---- no reader can exist ------------------------------------------------------------------
+      - name: Stub tarball (no readers can exist on this platform)
+        if: matrix.mode == 'stub'
+        run: bash build/stub.sh out "${{ matrix.reason }}"
+
+      # ---- macOS ------------------------------------------------------------------------------
+      - name: Build on macOS
+        if: matrix.mode == 'mac'
+        run: |
+          brew install cmake ninja snappy zstd autoconf automake libtool
+          bash build/native.sh out
+
+      # ---- Windows ----------------------------------------------------------------------------
+      - name: Visual Studio developer environment
+        if: matrix.mode == 'windows'
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: ${{ matrix.arch }}
+      - name: Build on Windows
+        if: matrix.mode == 'windows'
+        shell: bash
+        run: bash build/windows.sh out "${{ matrix.arch }}"
+
+      # ---- the BSDs, in a VM --------------------------------------------------------------------
+      - name: Build natively in FreeBSD
+        if: matrix.mode == 'freebsd'
+        uses: vmactions/freebsd-vm@c46abacb49f09938ca4e1702d15d836285d694cc # v1.5.9
+        with:
+          release: '14.3'
+          prepare: pkg install -y bash git cmake ninja gmake python3 pkgconf snappy zstd autoconf automake libtool
+          run: bash build/native.sh out
+      - name: Build natively in OpenBSD
+        if: matrix.mode == 'openbsd'
+        uses: vmactions/openbsd-vm@f1ca8bc8ecc5b6ef7218e5b914836e067e1546d3 # v1.4.9
+        with:
+          release: '7.8'
+          arch: ${{ matrix.vm_arch }}
+          mem: 12288
+          sync-time: true
+          prepare: pkg_add bash git cmake ninja gmake python%3 snappy zstd autoconf-2.71 automake-1.16.5 libtool
+          run: bash build/native.sh out
+      - name: Build natively in NetBSD
+        if: matrix.mode == 'netbsd'
+        uses: vmactions/netbsd-vm@c8a0d7ddb84619a7a8cc4e652efa7950b3fd9f92
+        with:
+          release: '10.1'
+          mem: 12288
+          prepare: |
+            /usr/sbin/pkg_add pkgin
+            pkgin -y install bash git cmake ninja-build gmake python313 snappy zstd autoconf automake libtool-base
+          run: bash build/native.sh out
+
+      # ---- every platform --------------------------------------------------------------------------
+      # only where this runner can run what it built: not the QEMU platforms, not the BSD VMs
+      - name: Smoke test the readers (they start, and find their libraries)
+        if: matrix.mode == 'mac' || matrix.mode == 'windows' || matrix.platform == 'x64' || matrix.platform == 'arm64'
+        shell: bash
+        run: |
+          ls -R out | head -40
+          n=0
+          for r in out/*/wt-mongo-dump out/*/wt-mongo-dump.exe; do
+            [ -e "$r" ] || continue
+            n=$((n + 1))
+            # no arguments prints the usage and exits 2; a library that cannot be loaded does not
+            out="$("$r" 2>&1 || true)"
+            echo "$r: $out" | head -2
+            echo "$out" | grep -q '^usage: wt-mongo-dump' || { echo "::error::$r does not start"; exit 1; }
+          done
+          [ "$n" -gt 0 ] || { echo "::error::no reader in the tarball"; exit 1; }
+
+      - name: Pack
+        shell: bash
+        run: |
+          mkdir -p dist
+          tar -C out -czf "dist/wt-${{ matrix.platform }}.tar.gz" .
+          (cd dist && { sha256sum "wt-${{ matrix.platform }}.tar.gz" 2>/dev/null || shasum -a 256 "wt-${{ matrix.platform }}.tar.gz"; } > "wt-${{ matrix.platform }}.tar.gz.sha256sum")
+          ls -l dist
+
+      - name: Test the tarball against real MongoDB data
+        if: matrix.platform == 'x64' || matrix.platform == 'arm64'
+        run: bash tests/ci-roundtrip.sh "dist/wt-${{ matrix.platform }}.tar.gz"
+
+      - name: Attach this platform to the release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+        run: gh release upload "$VERSION" --repo "$GITHUB_REPOSITORY" --clobber dist/*
+
+  summary:
+    name: what the release has
+    needs: [plan, build]
+    if: always() && needs.plan.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: List the platforms the release does not have
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          assets="$(gh release view "$VERSION" --repo "$GITHUB_REPOSITORY" --json assets -q '.assets[].name' 2>/dev/null || true)"
+          missing=""
+          for p in $(jq -r '.[].platform' platforms.json); do
+            echo "$assets" | grep -qx "wt-$p.tar.gz" && echo "$assets" | grep -qx "wt-$p.tar.gz.sha256sum" || missing="$missing $p"
+          done
+          if [ -n "$missing" ]; then
+            echo "::warning::$VERSION does not have:$missing - read those jobs' logs, then run Release All Missing"
+          else
+            echo "$VERSION has every platform."
+          fi

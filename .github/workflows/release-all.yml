@@ -1,18 +1,10 @@
 name: Release All
 
-# Builds wt - the reader of raw MongoDB data files that migrates a MongoDB 3.0 - 8.x database to
-# FerretDB (SQLite) WITHOUT mongod - for every platform, and attaches wt-<platform>.tar.gz and its
-# .sha256sum to the GitHub Release. WeKan's workflows download the newest of these from
-# https://github.com/wekan/wt/releases (the same way they take node-patches and
-# mongo-tools-patches binaries).
-#
-# Each tarball holds wt.mjs and, for every WiredTiger a mongod was ever linked with, a reader:
-#     11.3/  mongod 4.4 - 8.x      3.1/  mongod 3.2 - 4.2      2.5/  mongod 3.0 (x86_64 only)
-# A WiredTiger that does not build on a platform is left out of that platform's tarball, and
-# wt says so when it meets data it has no reader for.
-#
-# NOT built here: Windows and macOS. WiredTiger's autotools builds (3.1, 2.5) are Linux-only,
-# and the macOS / Windows story is a decision still to be made (see README.md).
+# Builds wt - the reader of raw MongoDB data files that migrates a MongoDB 3.0 - 8.x database to FerretDB
+# (SQLite) WITHOUT mongod - for every platform in platforms.json (the platforms of wekan/node-patches),
+# and attaches wt-<platform>.tar.gz and its .sha256sum to the GitHub Release. WeKan's workflows download
+# the newest of these from https://github.com/wekan/wt/releases, the way they take node-patches and
+# mongo-tools-patches binaries. The build steps are in build.yml.
 #
 # Usage:  gh workflow run release-all.yml -f version=v0.01
 
@@ -23,87 +15,18 @@ on:
         description: 'Release tag to create or update, e.g. v0.01'
         required: true
         type: string
-  push:
-    tags: ['v*']
 
 permissions:
   contents: write
 
 concurrency:
-  group: wt-release-${{ inputs.version || github.ref_name }}
+  group: wt-release-${{ inputs.version }}
   cancel-in-progress: false
 
 jobs:
   build:
-    name: wt for ${{ matrix.platform }}
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 240
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - { platform: linux-amd64,   runner: ubuntu-latest,     docker: linux/amd64 }
-          - { platform: linux-arm64,   runner: ubuntu-24.04-arm,  docker: linux/arm64 }
-          - { platform: linux-s390x,   runner: ubuntu-latest,     docker: linux/s390x,   base: "debian:trixie" }
-          - { platform: linux-ppc64le, runner: ubuntu-latest,     docker: linux/ppc64le }
-          - { platform: linux-riscv64, runner: ubuntu-latest,     docker: linux/riscv64, base: "debian:trixie" }
-          # 32-bit: WiredTiger needs a 64-bit CPU, so there is nothing to build - a stub tarball (build/stub.sh)
-          - { platform: linux-armv7,   runner: ubuntu-latest,     stub: true }
-    steps:
-      - uses: actions/checkout@v7
-
-      - name: Set up QEMU for the other CPU architectures
-        if: matrix.platform != 'linux-amd64' && matrix.platform != 'linux-arm64' && !matrix.stub
-        uses: docker/setup-qemu-action@v3
-
-      - uses: docker/setup-buildx-action@v3
-        if: ${{ !matrix.stub }}
-
-      - name: Stub tarball (no readers can exist on this platform)
-        if: ${{ matrix.stub }}
-        run: bash build/stub.sh out
-
-      - name: Build every reader that builds on this platform
-        if: ${{ !matrix.stub }}
-        run: |
-          docker buildx build --platform "${{ matrix.docker }}" --build-arg BASE="${{ matrix.base || 'debian:bookworm' }}" \
-            -f Dockerfile.release --target dist \
-            --output type=local,dest=out .
-          ls -R out | head -40
-          # a tarball with no reader at all is a failed build, not a platform without one
-          test -x out/11.3/wt-mongo-dump || test -x out/3.1/wt-mongo-dump || { echo "no reader built"; exit 1; }
-
-      - name: Pack
-        run: |
-          VERSION='${{ inputs.version || github.ref_name }}'
-          mkdir -p dist
-          tar -C out -czf "dist/wt-${{ matrix.platform }}.tar.gz" .
-          (cd dist && sha256sum "wt-${{ matrix.platform }}.tar.gz" > "wt-${{ matrix.platform }}.tar.gz.sha256sum")
-
-      - name: Test the tarball against real MongoDB data
-        if: matrix.platform == 'linux-amd64' || matrix.platform == 'linux-arm64'
-        run: bash tests/ci-roundtrip.sh "dist/wt-${{ matrix.platform }}.tar.gz"
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: wt-${{ matrix.platform }}
-          path: dist/*
-
-  release:
-    name: publish the GitHub Release
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          path: dist
-          merge-multiple: true
-      - name: Create or update the release and attach everything
-        env:
-          GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ inputs.version || github.ref_name }}
-        run: |
-          gh release view "$VERSION" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 \
-            || gh release create "$VERSION" --repo "$GITHUB_REPOSITORY" --title "wt $VERSION" \
-                 --notes "wt $VERSION: raw MongoDB 3.0 - 8.x data files to FerretDB (SQLite), without mongod."
-          gh release upload "$VERSION" --repo "$GITHUB_REPOSITORY" --clobber dist/*
+    uses: ./.github/workflows/build.yml
+    with:
+      version: ${{ inputs.version }}
+    permissions:
+      contents: write

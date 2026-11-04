@@ -23,13 +23,14 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT"
 . "$ROOT/releases/lib.sh"
 
+# The platform name of THIS machine's tarball (wekan/node-patches' names). Docker on a Mac builds Linux
+# images, so a Mac is x64 or arm64 here, not mac-*.
 host_platform() {
-  local os arch
-  os="$(uname -s | tr '[:upper:]' '[:lower:]')"
-  case "$(uname -m)" in x86_64|amd64) arch=amd64;; aarch64|arm64) arch=arm64;; s390x) arch=s390x;; ppc64le) arch=ppc64le;; riscv64) arch=riscv64;; armv7l) arch=armv7;; *) arch="$(uname -m)";; esac
-  # Docker on a Mac builds Linux images
-  [ "$os" = darwin ] && os=linux
-  echo "$os-$arch"
+  case "$(uname -m)" in
+    x86_64|amd64) echo x64 ;; aarch64|arm64) echo arm64 ;;
+    s390x) echo s390x ;; ppc64le) echo ppc64le ;; riscv64) echo riscv64 ;;
+    *) uname -m ;;
+  esac
 }
 
 act_deps() {

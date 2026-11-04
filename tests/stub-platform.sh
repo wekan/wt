@@ -17,10 +17,9 @@ WT_HOME="$W/out" node "$W/out/wt.mjs" detect "$W/db" | grep -q '"mongod": "7.0"'
 out="$(WT_HOME="$W/out" node "$W/out/wt.mjs" dump "$W/db" "$W/dump" 2>&1)"; rc=$?
 [ $rc -ne 0 ] && echo "$out" | grep -q "has no reader 11.3" && ok "dump says there is no reader on this platform, and fails" || { bad "dump did not say so (rc=$rc): $out"; }
 
-# the workflows build nothing for a stub platform
-for wf in release-all release-all-missing; do
-  f="$HERE/.github/workflows/$wf.yml"
-  grep -q 'linux-armv7.*stub' "$f" && ok "$wf.yml: armv7 is a stub" || bad "$wf.yml: armv7 is not a stub"
-  ! grep -q 'linux/arm/v7' "$f" && ok "negative: $wf.yml no longer builds armv7 in a 32-bit container" || bad "$wf.yml still builds armv7"
-done
+# the workflows build nothing for a stub platform: it is mode "stub" in platforms.json, and the stub step
+# is the only one that runs for it
+[ "$(jq -r '.[] | select(.platform == "armv7") | .mode' "$HERE/platforms.json")" = stub ] && ok "platforms.json: armv7 is a stub" || bad "armv7 is not a stub"
+grep -q "matrix.mode == 'stub'" "$HERE/.github/workflows/build.yml" && ok "build.yml has the stub step" || bad "build.yml has no stub step"
+! grep -q 'linux/arm/v7' "$HERE/.github/workflows/build.yml" "$HERE/platforms.json" && ok "negative: nothing builds in a 32-bit ARM container" || bad "something still builds armv7 in a container"
 exit $fail

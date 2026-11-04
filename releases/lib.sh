@@ -1,6 +1,9 @@
 # shared by build.sh and releases/*.sh - sourced, not run
 REPO_SLUG_DEFAULT="wekan/wt"
-PLATFORMS="linux-amd64 linux-arm64 linux-s390x linux-ppc64le linux-riscv64 linux-armv7"
+# The platforms are the ones in platforms.json (the platform names of wekan/node-patches), the one list the
+# workflows, this script and the tests all read.
+WT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+PLATFORMS="$(node -e 'console.log(JSON.parse(require("fs").readFileSync(process.argv[1] + "/platforms.json", "utf8")).map(p => p.platform).join(" "))' "$WT_ROOT")"
 
 info() { printf '==> %s\n' "$*"; }
 warn() { printf '==> %s\n' "$*"; }

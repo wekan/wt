@@ -69,16 +69,28 @@ function dirSize(p) {
   return n;
 }
 
+// What differs between operating systems for running a reader that sits beside its libraries.
+export function platformInfo(platform = process.platform) {
+  return {
+    exe: platform === 'win32' ? 'wt-mongo-dump.exe' : 'wt-mongo-dump',
+    // where the loader looks for libwiredtiger when the binary's own rpath is not enough
+    libVar: platform === 'win32' ? 'PATH' : platform === 'darwin' ? 'DYLD_LIBRARY_PATH' : 'LD_LIBRARY_PATH',
+    sep: platform === 'win32' ? ';' : ':',
+    // the block and journal compressors WiredTiger loads as extensions
+    extension: /^(lib)?wiredtiger_(snappy|zlib|zstd)\.(so|dylib|dll)$/,
+  };
+}
+
 function runReader(lib, flags, dbpath, outdir) {
+  const info = platformInfo();
   const dir = path.join(HOME, lib);
   const libdir = path.join(dir, 'lib');
   const exts = fs.existsSync(libdir)
-    ? fs.readdirSync(libdir).filter(f => /^libwiredtiger_.*\.so$/.test(f)).map(f => path.join(libdir, f)).join(',') : '';
-  const r = spawnSync(path.join(dir, 'wt-mongo-dump'), [...flags, dbpath, outdir], {
-    encoding: 'utf8', maxBuffer: 64 << 20,
-    env: { ...process.env, LD_LIBRARY_PATH: libdir, WT_EXTENSIONS: exts },
-  });
-  if (r.error || /error while loading shared libraries|cannot execute/.test(`${r.stderr}`)) {
+    ? fs.readdirSync(libdir).filter(f => info.extension.test(f)).map(f => path.join(libdir, f).replace(/\\/g, '/')).join(',') : '';
+  const env = { ...process.env, WT_EXTENSIONS: exts };
+  env[info.libVar] = libdir + (process.env[info.libVar] ? info.sep + process.env[info.libVar] : '');
+  const r = spawnSync(path.join(dir, info.exe), [...flags, dbpath, outdir], { encoding: 'utf8', maxBuffer: 64 << 20, env });
+  if (r.error || /error while loading shared libraries|cannot execute|dyld: |Library not loaded/.test(`${r.stderr}`)) {
     // not a refusal by the data: the tool itself is incomplete, and no escalation can fix that
     throw new Error(`the reader ${lib} cannot run: ${r.error ? r.error.message : String(r.stderr).split('\n')[0]}`);
   }
@@ -122,7 +134,7 @@ export function dump(dbpath, outdir, { tmp = process.env.TMPDIR || os.tmpdir(), 
   const info = detect(dbpath);
   if (info.engine !== 'wiredtiger' || !info.lib) { say(`wt: ${info.notes.join('; ') || 'cannot read these files'}`); return { ok: false, info }; }
   say(`wt: WiredTiger ${info.wiredTiger} (mongod ${info.mongod}); reader ${info.lib}`);
-  if (!fs.existsSync(path.join(HOME, info.lib, 'wt-mongo-dump'))) {
+  if (!fs.existsSync(path.join(HOME, info.lib, platformInfo().exe))) {
     // e.g. WiredTiger 2.5 (mongod 3.0) does not build on arm64: say so instead of failing obscurely
     say(`wt: this build of wt has no reader ${info.lib} for ${os.platform()}/${os.arch()}, so mongod ${info.mongod} data cannot be read here`);
     return { ok: false, info };

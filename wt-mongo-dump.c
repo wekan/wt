@@ -26,6 +26,13 @@
 #include <sys/stat.h>
 #include <wiredtiger.h>
 
+#ifdef _WIN32
+#include <direct.h>
+#define MKDIR(p) _mkdir(p)
+#else
+#define MKDIR(p) mkdir((p), 0755)
+#endif
+
 static int die(const char *what, int rc) {
   fprintf(stderr, "wt-mongo-dump: %s: %s\n", what, wiredtiger_strerror(rc));
   return 1;
@@ -76,8 +83,8 @@ static int bson_get_string(const uint8_t *d, size_t len, const char *name, char 
 
 static void mkdirs(const char *path) {
   char tmp[4096]; snprintf(tmp, sizeof tmp, "%s", path);
-  for (char *p = tmp + 1; *p; p++) if (*p == '/') { *p = 0; mkdir(tmp, 0755); *p = '/'; }
-  mkdir(tmp, 0755);
+  for (char *p = tmp + 1; *p; p++) if (*p == '/' || *p == '\\') { char c = *p; *p = 0; MKDIR(tmp); *p = c; }
+  MKDIR(tmp);
 }
 
 int main(int argc, char **argv) {
