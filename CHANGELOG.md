@@ -1,6 +1,6 @@
 # Changelog
 
-# Upcoming wt release
+# v0.02 2026-11-05 wt release
 
 **In short:** The builds that failed in v0.01 are fixed: **macOS**, **Windows**, **FreeBSD**, **OpenBSD** and
 **NetBSD**, **riscv64** WiredTiger 3.1, and the upload that made eight jobs fail with "already exists".
