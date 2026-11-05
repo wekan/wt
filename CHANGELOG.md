@@ -1,6 +1,6 @@
 # Changelog
 
-# Upcoming wt release
+# v0.03 2026-11-05 wt release
 
 **In short:** The four builds that failed in v0.02 are fixed: **Windows** finds vcpkg's zlib, **Windows on
 ARM** ships the x64 build that it runs through emulation, and **macOS** WiredTiger 3.1 finds its library.
