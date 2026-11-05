@@ -1,5 +1,38 @@
 # Changelog
 
+# Upcoming wt release
+
+**In short:** The builds that failed in v0.01 are fixed: **macOS**, **Windows**, **FreeBSD**, **OpenBSD** and
+**NetBSD**, **riscv64** WiredTiger 3.1, and the upload that made eight jobs fail with "already exists".
+
+This release fixes the following bugs:
+
+<details>
+<summary><a href="https://github.com/wekan/wt/commit/0063d9d">The builds for macOS, Windows, the BSDs and riscv64, and the upload of the stub platforms</a>. Thanks to xet7.</summary>
+
+v0.01 was published with 17 of its 24 tarballs. What the logs showed:
+
+- Eight stub jobs failed with `ReleaseAsset.name already exists`: a `dist/` holding a tarball built by hand had
+  been committed, and every job uploaded `dist/*`, that stale file included, at the same moment. `dist/` is
+  ignored now, Pack starts from a clean one, and each job uploads its own two files by name. v0.01 has a stray
+  `wt-linux-arm64.tar.gz` from it.
+- macOS: WiredTiger 11.3 built, and then the copy of the compressors looked for `libwiredtiger_snappy.dylib`.
+  They are module libraries, `.so` on macOS too (libtool's as well). Both suffixes are copied.
+- Windows: `unknown target 'wiredtiger_shared'`. WiredTiger's CMake builds a static library on Windows, so the
+  compressors are built in (`HAVE_BUILTIN_EXTENSION_*`) against vcpkg's static snappy, zstd and zlib, and one
+  `wt-mongo-dump.exe` with no DLLs is linked.
+- FreeBSD, OpenBSD, NetBSD: 11.3's CMake knows linux, darwin and windows only. Where the OS is something else it
+  is built as Linux, with the CPU named `x86` or `aarch64`. NetBSD's Python is `python3.13`, so `w31.sh` looks
+  for the versioned names, and OpenBSD's packages are `autoconf%2.71` and `automake%1.16`.
+- riscv64: WiredTiger 3.1 linked with `undefined reference to wiredtiger_crc32c_func`, which only the x86,
+  arm64, PowerPC and s390x directories define. `w31.sh` adds the software checksum for RISC-V.
+
+None of these platform fixes has been built yet; `tests/build-scripts.sh` pins each fault and its fix.
+
+</details>
+
+Thanks to above GitHub users for their contributions and translators for their translations.
+
 # v0.01 2026-11-05 wt release
 
 **In short:** The first release of **wt** (v0.01), which reads the raw data files of a MongoDB 3.0 - 8.x
