@@ -106,7 +106,7 @@ int main(int argc, char **argv) {
   int rc = WT_ERROR;
   for (int ci = 0; journal_compressors[ci] && !conn; ci++) {
     char cfg[4096], ext[1024] = "";
-    if (exts)   /* comma-separated shared objects: the block and journal compressors */
+    if (exts && exts[0])   /* comma-separated shared objects: the block and journal compressors; none when they are built in */
       snprintf(ext, sizeof ext, "extensions=[%s],", exts);
     snprintf(cfg, sizeof cfg,
       "%sconfig_base=false,cache_size=512MB,log=(enabled=true,path=journal%s%s%s),statistics=(none)%s",

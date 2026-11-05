@@ -129,7 +129,8 @@ jobs:
           arch: ${{ matrix.vm_arch }}
           mem: 12288
           sync-time: true
-          prepare: pkg_add bash git cmake ninja gmake python%3 snappy zstd autoconf-2.71 automake-1.16.5 libtool
+          # a full version is not a package name ("Can't find autoconf", with the version): stem%branch is
+          prepare: pkg_add bash git cmake ninja gmake python%3 snappy zstd autoconf%2.71 automake%1.16 libtool
           run: bash build/native.sh out
       - name: Build natively in NetBSD
         if: matrix.mode == 'netbsd'
@@ -140,6 +141,7 @@ jobs:
           prepare: |
             /usr/sbin/pkg_add pkgin
             pkgin -y install bash git cmake ninja-build gmake python313 snappy zstd autoconf automake libtool-base
+            # the package is python3.13; the build scripts look for python3 first, then the versioned names
           run: bash build/native.sh out
 
       # ---- every platform --------------------------------------------------------------------------
@@ -163,6 +165,9 @@ jobs:
       - name: Pack
         shell: bash
         run: |
+          # only this platform's files, on a clean dist/: a dist/ that came with the checkout once held another
+          # platform's tarball, and every job uploaded it ("ReleaseAsset.name already exists")
+          rm -rf dist
           mkdir -p dist
           tar -C out -czf "dist/wt-${{ matrix.platform }}.tar.gz" .
           (cd dist && { sha256sum "wt-${{ matrix.platform }}.tar.gz" 2>/dev/null || shasum -a 256 "wt-${{ matrix.platform }}.tar.gz"; } > "wt-${{ matrix.platform }}.tar.gz.sha256sum")
@@ -177,7 +182,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ inputs.version }}
-        run: gh release upload "$VERSION" --repo "$GITHUB_REPOSITORY" --clobber dist/*
+        run: |
+          gh release upload "$VERSION" --repo "$GITHUB_REPOSITORY" --clobber \
+            "dist/wt-${{ matrix.platform }}.tar.gz" "dist/wt-${{ matrix.platform }}.tar.gz.sha256sum"
 
   summary:
     name: what the release has

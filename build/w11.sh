@@ -13,8 +13,18 @@ CC="${CC:-gcc}"; JOBS="${WT_JOBS:-$( (nproc || sysctl -n hw.ncpu) 2>/dev/null ||
 [ -d "$WORK/.git" ] || git clone --depth 1 -b "$BRANCH" https://github.com/wiredtiger/wiredtiger "$WORK"
 mkdir -p "$WORK/build" "$OUT/11.3/lib"; cd "$WORK/build"
 GEN=(); command -v ninja >/dev/null 2>&1 && GEN=(-G Ninja)
+# WiredTiger 11.3's CMake knows three operating systems - linux, darwin and windows - and names the CPU x86 or
+# aarch64. On FreeBSD, OpenBSD and NetBSD it stopped with "cmake/configs/amd64/freebsd/config.cmake does not
+# exist" (the CPU is "amd64" there), and on NetBSD it took the macOS branch and ran dsymutil. The BSDs are close
+# enough to Linux to try as Linux; if that does not build, the reader is left out with the log, as before.
+OSFLAGS=()
+case "$(uname -s)" in
+  Linux|Darwin) ;;
+  *) case "$(uname -m)" in x86_64|amd64) wtarch=x86 ;; aarch64|arm64) wtarch=aarch64 ;; *) wtarch="" ;; esac
+     OSFLAGS=(-DWT_OS=linux ${wtarch:+-DWT_ARCH=$wtarch}) ;;
+esac
 # `${GEN[@]+...}`: an empty array is an unbound variable to bash 3.2 (macOS) under set -u
-cmake ${GEN[@]+"${GEN[@]}"} -DENABLE_SNAPPY=1 -DENABLE_ZLIB=1 -DENABLE_ZSTD=1 -DCMAKE_BUILD_TYPE=Release \
+cmake ${GEN[@]+"${GEN[@]}"} ${OSFLAGS[@]+"${OSFLAGS[@]}"} -DENABLE_SNAPPY=1 -DENABLE_ZLIB=1 -DENABLE_ZSTD=1 -DCMAKE_BUILD_TYPE=Release \
   -DCMAKE_C_FLAGS="-Wno-error" -DENABLE_STATIC=0 -DENABLE_PYTHON=0 \
   ${WT_CMAKE_PREFIX:+-DCMAKE_PREFIX_PATH="$WT_CMAKE_PREFIX"} .. > "$LOG" 2>&1
 # the compiler trips WiredTiger's own -Werror on harmless notes; strip it from whatever the generator wrote
@@ -22,5 +32,7 @@ find . \( -name build.ninja -o -name flags.make \) -exec sh -c 'sed -E "s/ -Werr
 TARGETS="wiredtiger_shared wiredtiger_snappy wiredtiger_zlib wiredtiger_zstd"
 if [ -f build.ninja ]; then ninja $TARGETS >> "$LOG" 2>&1; else make -j"$JOBS" $TARGETS >> "$LOG" 2>&1; fi
 cp -a libwiredtiger*."$SO"* "$OUT/11.3/lib/"
-for f in ext/compressors/*/libwiredtiger_*."$SO"; do cp -L "$f" "$OUT/11.3/lib/"; done
+# the compressors are MODULE libraries: .so on Linux and the BSDs, and ALSO on macOS, where CMake does not
+# give a module the .dylib of a shared library (the first macOS build looked for libwiredtiger_snappy.dylib)
+find ext/compressors \( -name 'libwiredtiger_*.so' -o -name 'libwiredtiger_*.dylib' \) -exec cp -L {} "$OUT/11.3/lib/" \;
 "$CC" -O2 -Wall -Iinclude -o "$OUT/11.3/wt-mongo-dump" "$READER" -L"$OUT/11.3/lib" -lwiredtiger -Wl,-rpath,"$RPATH"

@@ -8,3 +8,4 @@ wt-mongo-dump-*
 reader-*.env
 state.json
 *.bak
+dist/

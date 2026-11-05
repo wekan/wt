@@ -4,12 +4,18 @@
 # (ilammy/msvc-dev-cmd in the workflow). Windows gets 11.3 only: WiredTiger 3.1 and 2.5 are autotools
 # builds. Data files are the same on every operating system, so older databases are read by wt on Linux or
 # macOS. If this does not build, the reason is the tail of the log in the output, and the job fails.
+#
+# WiredTiger's CMake builds a STATIC library on Windows ("We force a static compilation to generate a .lib
+# file", cmake/configs/base.cmake): there is no wiredtiger_shared target, which is what the first run stopped
+# on ("ninja: error: unknown target 'wiredtiger_shared'"). So the engine is linked into the reader, and the
+# compressors are BUILT IN (HAVE_BUILTIN_EXTENSION_*, which replaces ENABLE_*), against vcpkg's static
+# snappy, zstd and zlib. The result is one wt-mongo-dump.exe with no DLLs next to it.
 set -euo pipefail
 out="$1"; arch="${2:-x64}"
 here="$(cd "$(dirname "$0")/.." && pwd)"
 work="${WT_WORKROOT:-$(mktemp -d)}"; log="$work/build-11.3.log"
-mkdir -p "$out/11.3/lib"; out="$(cd "$out" && pwd)"
-case "$arch" in x64) triplet=x64-windows ;; arm64) triplet=arm64-windows ;; *) echo "windows.sh: unknown arch $arch" >&2; exit 2 ;; esac
+mkdir -p "$out/11.3"; out="$(cd "$out" && pwd)"
+case "$arch" in x64) triplet=x64-windows-static ;; arm64) triplet=arm64-windows-static ;; *) echo "windows.sh: unknown arch $arch" >&2; exit 2 ;; esac
 fail() { echo "---- WiredTiger 11.3 did not build for Windows $arch; last lines of its log:"; tail -40 "$log" 2>/dev/null | cut -c1-240; exit 1; }
 trap 'fail' ERR
 vcpkg="${VCPKG_INSTALLATION_ROOT:-C:/vcpkg}"
@@ -17,14 +23,16 @@ vcpkg="${VCPKG_INSTALLATION_ROOT:-C:/vcpkg}"
 git clone --depth 1 -b mongodb-8.0 https://github.com/wiredtiger/wiredtiger "$work/wt" >> "$log" 2>&1
 mkdir -p "$work/wt/build"; cd "$work/wt/build"
 cmake -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="$vcpkg/scripts/buildsystems/vcpkg.cmake" \
-  -DVCPKG_TARGET_TRIPLET="$triplet" -DENABLE_SNAPPY=1 -DENABLE_ZLIB=1 -DENABLE_ZSTD=1 -DENABLE_STATIC=0 -DENABLE_PYTHON=0 .. >> "$log" 2>&1
-ninja wiredtiger_shared wiredtiger_snappy wiredtiger_zlib wiredtiger_zstd >> "$log" 2>&1
-# the DLLs: the engine and the three compressors, and the vcpkg DLLs they load
-find . -name 'wiredtiger*.dll' -exec cp -f {} "$out/11.3/lib/" \;
-cp -f "$vcpkg/installed/$triplet/bin/"*.dll "$out/11.3/lib/" 2>/dev/null || true
-lib_file="$(find . -name 'wiredtiger.lib' | head -1)"
-[ -n "$lib_file" ] || { echo "no wiredtiger.lib" >> "$log"; fail; }
-# the reader, next to its libraries' directory
-( cd "$out/11.3" && cl.exe /nologo /O2 /W3 "/I$work/wt/build/include" "$here/wt-mongo-dump.c" "/Fe:wt-mongo-dump.exe" /link "$work/wt/build/$lib_file" ) >> "$log" 2>&1
+  -DVCPKG_TARGET_TRIPLET="$triplet" -DENABLE_STATIC=1 -DENABLE_SHARED=0 -DDYNAMIC_CRT=0 -DENABLE_PYTHON=0 \
+  -DHAVE_BUILTIN_EXTENSION_SNAPPY=1 -DHAVE_BUILTIN_EXTENSION_ZLIB=1 -DHAVE_BUILTIN_EXTENSION_ZSTD=1 .. >> "$log" 2>&1
+# say which targets exist, so a wrong name is seen in the log next time
+ninja -t targets all 2>/dev/null | grep -i 'wiredtiger' | grep -v '\.obj\|\.o:' | head -20 >> "$log" || true
+ninja wiredtiger_static >> "$log" 2>&1
+lib_file="$(find . -name 'wiredtiger*.lib' | head -1)"
+[ -n "$lib_file" ] || { echo "no wiredtiger*.lib was built" >> "$log"; fail; }
+# the reader: /MT like the library and the vcpkg triplet; the system libraries WiredTiger uses on Windows
+deps="$(ls "$vcpkg/installed/$triplet/lib/"*.lib | tr '\n' ' ')"
+( cd "$out/11.3" && cl.exe /nologo /O2 /W3 /MT "/I$work/wt/build/include" "$here/wt-mongo-dump.c" "/Fe:wt-mongo-dump.exe" \
+    /link "$work/wt/build/$lib_file" $deps advapi32.lib bcrypt.lib psapi.lib ws2_32.lib ) >> "$log" 2>&1
 cp "$here/wt.mjs" "$out/wt.mjs"
-echo "windows.sh: built $out/11.3 ($(ls "$out/11.3/lib" | wc -l | tr -d ' ') DLLs)"
+echo "windows.sh: built $out/11.3/wt-mongo-dump.exe ($(du -k "$out/11.3/wt-mongo-dump.exe" | cut -f1) KB, no DLLs)"

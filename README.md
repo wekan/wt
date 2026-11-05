@@ -58,7 +58,7 @@ vocabulary. Every release has a `wt-<platform>.tar.gz` and a `.sha256sum` for ea
 | x64, arm64, s390x, ppc64le, riscv64 (Linux) | readers 11.3 and 3.1, and 2.5 on x64 | `Dockerfile.release`, in a container of that CPU |
 | mac-arm64, mac-x64 | readers 11.3 and 3.1 | `build/native.sh` on a macOS runner |
 | freebsd-x64, openbsd-x64, openbsd-arm64, netbsd-x64 | readers 11.3 and 3.1 | `build/native.sh` in a VM |
-| win64, win-arm64 | reader 11.3 (mongod 4.4 - 8.0; older data files are read on Linux or macOS) | `build/windows.sh`, MSVC |
+| win64, win-arm64 | reader 11.3 (mongod 4.4 - 8.0; older data files are read on Linux or macOS), one static .exe | `build/windows.sh`, MSVC |
 | i386, armv6, armhf, armv7, win32, android-armv7, android-x86 | `wt.mjs` only | WiredTiger needs a 64-bit CPU, and MongoDB never ran it on 32-bit |
 | android-arm64, android-x64 | `wt.mjs` only | MongoDB never ran on Android |
 | loong64 | `wt.mjs` only | WiredTiger has no LoongArch port |
