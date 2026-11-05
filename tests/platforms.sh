@@ -21,7 +21,9 @@ done
 jq -e 'all(.[]; has("platform") and has("mode") and has("runner"))' platforms.json >/dev/null && ok "every entry has platform, mode and runner" || bad "an entry lacks platform, mode or runner"
 jq -e 'all(.[] | select(.mode == "docker"); has("docker"))' platforms.json >/dev/null && ok "every docker platform names its container platform" || bad "a docker platform has no docker field"
 jq -e 'all(.[] | select(.mode == "openbsd"); has("vm_arch"))' platforms.json >/dev/null && ok "every OpenBSD platform names its VM architecture" || bad "an OpenBSD platform has no vm_arch"
-jq -e 'all(.[] | select(.mode == "windows"); .arch == "x64" or .arch == "arm64")' platforms.json >/dev/null && ok "every Windows platform is x64 or arm64" || bad "a Windows platform has no arch"
+# WiredTiger builds with MSVC for x64 only; win-arm64 ships the x64 build, which Windows on ARM runs (.tools/log/wt1)
+jq -e 'all(.[] | select(.mode == "windows"); .arch == "x64")' platforms.json >/dev/null && ok "every Windows platform builds x64" || bad "a Windows platform asks MSVC for an arch WiredTiger does not build"
+jq -e '.[] | select(.platform == "win-arm64") | .runner == "windows-11-arm"' platforms.json >/dev/null && ok "win-arm64 still runs on an ARM runner, so its smoke test runs the x64 build there" || bad "win-arm64 is not tested on ARM"
 
 # what can have no reader is a stub, with a reason build/stub.sh knows
 for r in $(jq -r '.[] | select(.mode == "stub") | .reason' platforms.json | sort -u); do

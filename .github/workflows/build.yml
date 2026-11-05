@@ -9,7 +9,7 @@ name: Build
 # release workflows fetch wt-<platform> and node-<platform> with the same vocabulary. Modes:
 #   docker   Linux 64-bit, in a container of the target CPU (Dockerfile.release): WiredTiger 11.3, 3.1, 2.5
 #   mac      macOS, natively (build/native.sh): 11.3 and 3.1
-#   windows  MSVC (build/windows.sh): 11.3
+#   windows  MSVC (build/windows.sh): 11.3, x64 only - win-arm64 gets the x64 build, run by Windows on ARM
 #   freebsd, openbsd, netbsd   in a VM (vmactions), natively (build/native.sh): 11.3 and 3.1
 #   stub     no reader can exist (32-bit, Android, LoongArch): wt.mjs and an explanation (build/stub.sh)
 # A platform marked best_effort does not fail the run when it fails: nobody has built WiredTiger there

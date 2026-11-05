@@ -51,4 +51,12 @@ make -j"$JOBS" >> "$LOG" 2>&1
 cp -a .libs/libwiredtiger*."$SO"* "$OUT/3.1/lib/"
 # libtool modules: .so also on macOS
 find ext/compressors \( -name 'libwiredtiger_snappy.so' -o -name 'libwiredtiger_zlib.so' -o -name 'libwiredtiger_snappy.dylib' -o -name 'libwiredtiger_zlib.dylib' \) -exec cp -L {} "$OUT/3.1/lib/" \;
+# macOS: libtool gives the library the install name of its prefix (/usr/local/lib/libwiredtiger-3.1.0.dylib),
+# and the reader linked against it looked there ("dyld: Library not loaded"), not in its own lib/. With an
+# @rpath install name the reader finds it through its @loader_path/lib rpath, as 11.3's CMake build does.
+if [ "$SO" = dylib ]; then
+  for f in "$OUT/3.1/lib/"libwiredtiger*.dylib; do
+    [ -L "$f" ] || install_name_tool -id "@rpath/$(basename "$f")" "$f"
+  done
+fi
 "$CC" -O2 -Wall -I. -o "$OUT/3.1/wt-mongo-dump" "$READER" -L"$OUT/3.1/lib" -lwiredtiger -Wl,-rpath,"$RPATH"

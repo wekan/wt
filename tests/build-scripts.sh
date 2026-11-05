@@ -48,4 +48,23 @@ hasnt build/windows.sh 'ninja wiredtiger_shared' "negative: windows.sh does not 
 has build/windows.sh 'HAVE_BUILTIN_EXTENSION_SNAPPY=1' "the compressors are built in"
 has build/windows.sh 'x64-windows-static' "vcpkg's static triplet"
 has wt-mongo-dump.c 'exts && exts\[0\]' "an empty WT_EXTENSIONS means none"
+# 7. the fourth release run (.tools/log/wt1): Windows zlib, Windows arm64, macOS 3.1's install name
+has build/windows.sh 'zlib-alias/z.lib' "windows.sh gives find_library(z) a z.lib (vcpkg's is zlib.lib)"
+has build/windows.sh 'CMAKE_LIBRARY_PATH="\$work/zlib-alias"' "and points CMake at it"
+hasnt build/windows.sh 'triplet=arm64-windows-static' "negative: windows.sh does not try MSVC arm64, which WiredTiger refuses"
+has build/windows.sh '-DWT_ARCH=x86 -DWT_OS=windows' "the target is named, not taken from the host CPU (ARM64 on win-arm64)"
+has build/w31.sh 'install_name_tool -id "@rpath/' "w31.sh gives the macOS library an @rpath install name"
+# and that it works: a dylib with an absolute install name, then the loop, then the name
+if [ "$(uname -s)" = Darwin ]; then
+  D="$(mktemp -d)"; mkdir -p "$D/lib"
+  echo 'int f(void){return 1;}' > "$D/f.c"
+  cc -dynamiclib -install_name /usr/local/lib/libwiredtiger-3.1.0.dylib -o "$D/lib/libwiredtiger-3.1.0.dylib" "$D/f.c"
+  ln -s libwiredtiger-3.1.0.dylib "$D/lib/libwiredtiger.dylib"
+  OUT="$D/out"; mkdir -p "$OUT/3.1"; mv "$D/lib" "$OUT/3.1/lib"; SO=dylib
+  eval "$(sed -n '/^if \[ "\$SO" = dylib \]; then$/,/^fi$/p' build/w31.sh)"
+  otool -D "$OUT/3.1/lib/libwiredtiger-3.1.0.dylib" | grep -q '^@rpath/libwiredtiger-3.1.0.dylib$' && ok "the install name is @rpath/" || bad "the install name is still absolute"
+  rm -rf "$D"
+else
+  ok "(the install-name run needs macOS; its source is pinned above)"
+fi
 exit $fail
