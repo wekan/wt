@@ -1,5 +1,33 @@
 # Changelog
 
+# Upcoming wt release
+
+**In short:** The four builds that failed in v0.02 are fixed: **Windows** finds vcpkg's zlib, **Windows on
+ARM** ships the x64 build that it runs through emulation, and **macOS** WiredTiger 3.1 finds its library.
+
+This release fixes the following bugs:
+
+<details>
+<summary><a href="https://github.com/wekan/wt/commit/fd8df71">The Windows, Windows on ARM and macOS WiredTiger 3.1 builds</a>. Thanks to xet7.</summary>
+
+v0.02 was published without four of its tarballs. What the logs showed:
+
+- win64: `Failed to find zlib library`. WiredTiger looks for zlib as `find_library(z)`, the Unix name, and
+  vcpkg's is `zlib.lib`. A `z.lib` copy in a directory of its own is put on `CMAKE_LIBRARY_PATH`.
+- win-arm64: `cmake/configs/ARM64/windows/config.cmake does not exist`. WiredTiger supports MSVC on x64 only
+  (`msvc.h`: "Only x64 is supported with MSVC"), so win-arm64 ships the x64 build, which Windows 11 on ARM
+  runs through its x64 emulation. The job still runs on the ARM runner, so its smoke test runs it there.
+- mac-arm64, mac-x64: the 3.1 reader did not start, `Library not loaded:
+  /usr/local/lib/libwiredtiger-3.1.0.dylib`, libtool's install name. The library gets an `@rpath` install
+  name, so the reader finds it in its own `lib/`.
+
+`tests/build-scripts.sh` and `tests/platforms.sh` pin each fault and its fix; none has been built on those
+runners yet.
+
+</details>
+
+Thanks to above GitHub users for their contributions and translators for their translations.
+
 # v0.02 2026-11-05 wt release
 
 **In short:** The builds that failed in v0.01 are fixed: **macOS**, **Windows**, **FreeBSD**, **OpenBSD** and
